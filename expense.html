@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Expense Tracker AI</title>
+
+    <!-- PDF Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Chart Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #c084fc, #e9d5ff);
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+
+        .dark {
+            background: linear-gradient(135deg, #1f1f1f, #3b0764);
+            color: white;
+        }
+
+        .container {
+            background: white;
+            width: 95%;
+            height: 95vh;
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.5s ease, color 0.5s ease;
+        }
+
+        .dark .container {
+            background: #2a2a2a;
+            color: white;
+        }
+
+        h1 {
+            text-align: center;
+            color: #6a0dad;
+        }
+
+        .dark h1 {
+            color: #c084fc;
+        }
+
+        .input-section {
+            text-align: center;
+        }
+
+        input, select {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background-color: #a855f7;
+            color: white;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        .main {
+            display: flex;
+            flex: 1;
+        }
+
+        .left {
+            width: 50%;
+            overflow-y: auto;
+        }
+
+        .right {
+            width: 50%;
+            text-align: center;
+        }
+
+        li {
+            list-style: none;
+            margin: 10px;
+            background: #f5d0fe;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            transition: background 0.5s ease;
+        }
+
+        .dark li {
+            background: #4c1d95;
+        }
+
+        .ai-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #ede9fe;
+            border-radius: 10px;
+            transition: background 0.5s ease;
+        }
+
+        .dark .ai-box {
+            background: #3b0764;
+        }
+    </style>
+</head>
+<body>
+
+<button onclick="toggleDarkMode()" style="position:absolute; top:10px; right:20px;">Dark Mode</button>
+
+<div class="container">
+    <h1>Expense Tracker with AI</h1>
+
+    <div class="input-section">
+        <input type="text" id="item" placeholder="Item">
+        <input type="number" id="amount" placeholder="Amount">
+        <select id="category">
+            <option>Food</option>
+            <option>Travel</option>
+            <option>Shopping</option>
+            <option>Entertainment</option>
+            <option>Other</option>
+        </select>
+        <button onclick="addExpense()">Add</button>
+        <button onclick="downloadPDF()">PDF</button>
+    </div>
+
+    <div class="main">
+        <div class="left">
+            <ul id="list"></ul>
+            <h2>Total: ₹ <span id="total">0</span></h2>
+        </div>
+
+        <div class="right">
+            <canvas id="chart" width="300" height="300"></canvas>
+            <div class="ai-box">
+                <h3>AI Suggestion</h3>
+                <p id="ai"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let total = 0;
+let expenses = [];
+let chart;
+
+const itemInput = document.getElementById("item");
+const amountInput = document.getElementById("amount");
+
+// Load saved data
+window.onload = function() {
+    let saved = localStorage.getItem("expenses");
+    if (saved) {
+        expenses = JSON.parse(saved);
+        expenses.forEach(e => addToUI(e));
+        updateChart();
+        runAI();
+    }
+};
+
+// Enter navigation
+itemInput.addEventListener("keypress", e => {
+    if (e.key === "Enter") amountInput.focus();
+});
+
+amountInput.addEventListener("keypress", e => {
+    if (e.key === "Enter") addExpense();
+});
+
+// Add expense
+function addExpense() {
+    let item = itemInput.value;
+    let amount = amountInput.value;
+    let category = document.getElementById("category").value;
+
+    if (!item || !amount) return;
+
+    let expense = {item, amount, category};
+    expenses.push(expense);
+
+    localStorage.setItem("expenses", JSON.stringify(expenses));
+
+    addToUI(expense);
+    updateChart();
+    runAI();
+
+    itemInput.value = "";
+    amountInput.value = "";
+    itemInput.focus();
+}
+
+// Add to UI
+function addToUI(exp) {
+    let li = document.createElement("li");
+    li.innerHTML = `${exp.item} (₹${exp.amount}) - ${exp.category}
+    <button onclick="deleteExpense(this, '${exp.item}')">X</button>`;
+    document.getElementById("list").appendChild(li);
+
+    total += Number(exp.amount);
+    document.getElementById("total").textContent = total;
+}
+
+// Delete
+function deleteExpense(btn, itemName) {
+    expenses = expenses.filter(e => e.item !== itemName);
+    localStorage.setItem("expenses", JSON.stringify(expenses));
+    btn.parentElement.remove();
+
+    total = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    document.getElementById("total").textContent = total;
+
+    updateChart();
+    runAI();
+}
+
+// Dark mode
+function toggleDarkMode() {
+    document.body.classList.toggle("dark");
+}
+
+// PDF
+function downloadPDF() {
+    const { jsPDF } = window.jspdf;
+    let doc = new jsPDF();
+    doc.text("Expense Report", 80, 10);
+
+    let y = 20;
+    expenses.forEach(e => {
+        doc.text(`${e.item} - ${e.category} - Rs ${e.amount}`, 20, y);
+        y += 10;
+    });
+
+    doc.text("Total: Rs " + total, 20, y + 10);
+    doc.save("Expense_Report.pdf");
+}
+
+// Pie Chart
+function updateChart() {
+    let categories = {};
+    expenses.forEach(e => {
+        categories[e.category] = (categories[e.category] || 0) + Number(e.amount);
+    });
+
+    let labels = Object.keys(categories);
+    let data = Object.values(categories);
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(document.getElementById("chart"), {
+        type: "pie",
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data
+            }]
+        }
+    });
+}
+
+// AI Suggestion
+function runAI() {
+    let categories = {};
+    let totalSpent = 0;
+
+    expenses.forEach(e => {
+        categories[e.category] = (categories[e.category] || 0) + Number(e.amount);
+        totalSpent += Number(e.amount);
+    });
+
+    if (totalSpent === 0) {
+        document.getElementById("ai").textContent = "Start adding expenses to get AI suggestions.";
+        return;
+    }
+
+    let maxCategory = Object.keys(categories).reduce((a, b) => 
+        categories[a] > categories[b] ? a : b
+    );
+
+    let percent = ((categories[maxCategory] / totalSpent) * 100).toFixed(1);
+
+    let suggestion = "";
+
+    if (maxCategory === "Food")
+        suggestion = `You spent ${percent}% on Food. Try cooking at home and reducing food delivery.`;
+
+    else if (maxCategory === "Shopping")
+        suggestion = `You spent ${percent}% on Shopping. Try waiting 24 hours before buying non-essential items.`;
+
+    else if (maxCategory === "Travel")
+        suggestion = `You spent ${percent}% on Travel. Use public transport or carpool to save money.`;
+
+    else if (maxCategory === "Entertainment")
+        suggestion = `You spent ${percent}% on Entertainment. Try free activities and reduce subscriptions.`;
+
+    else if (maxCategory === "Other")
+        suggestion = `You spent ${percent}% on miscellaneous items. Small unknown expenses often waste the most money. Track them and set a monthly limit.`;
+
+    if (totalSpent > 5000) {
+        suggestion += " Also, your total spending is quite high. Try setting a weekly budget.";
+    }
+
+    document.getElementById("ai").textContent = suggestion;
+}
+</script>
+
+</body>
+</html>
