@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokemon To-Do List</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+}
+
+h1 { text-align: center; }
+
+.input-area { text-align: center; margin: 20px; }
+
+input {
+    padding: 12px;
+    width: 60%;
+    border-radius: 10px;
+    border: none;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 10px;
+    background: #38bdf8;
+    color: white;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.container {
+    display: flex;
+    justify-content: space-around;
+    padding: 20px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        align-items: center;
+    }
+    .column { width: 90%; margin-bottom: 20px; }
+}
+
+.column {
+    width: 40%;
+    min-height: 400px;
+    padding: 20px;
+    border-radius: 15px;
+    background: #1e293b;
+}
+
+.chart-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    width: 350px;
+    background: #1e293b;
+    border-radius: 15px;
+    padding: 20px;
+    border: 2px solid #38bdf8;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    z-index: 1000;
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.3);
+}
+
+.chart-box.show {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.chart-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    z-index: 999;
+}
+
+.chart-overlay.show {
+    display: block;
+}
+
+.close-chart-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #ef4444;
+    border: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.divider {
+    width: 90%;
+    height: 2px;
+    border-top: 2px dashed #64748b;
+    margin: auto;
+}
+
+.task {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #334155;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.task:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px cyan;
+}
+
+/* FireRed style pixel sprites */
+.task img {
+    width: 50px;
+    height: 50px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    margin-right: 10px;
+}
+
+.delete-btn {
+    background: #ef4444;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+}
+
+canvas { background: white; border-radius: 10px; }
+</style>
+</head>
+
+<body>
+<h1>🎮 Pokemon To-Do List</h1>
+
+<div class="input-area">
+    <input type="text" id="taskInput" placeholder="Enter task and press Enter">
+    <button onclick="addTask()">Add Task</button>
+    <button onclick="toggleChart()">Show Progress</button>
+</div>
+
+<div class="divider"></div>
+
+<div class="container">
+    <div class="column">
+        <h2>To Do (Max 12)</h2>
+        <div id="todoList"></div>
+    </div>
+
+    <div class="column">
+        <h2>Done</h2>
+        <div id="doneList"></div>
+    </div>
+</div>
+
+<div class="chart-overlay" id="chartOverlay"></div>
+
+<div class="chart-box" id="chartBox">
+    <button class="close-chart-btn" onclick="toggleChart()">×</button>
+    <h3 style="text-align:center">Progress</h3>
+    <canvas id="progressChart" width="200" height="200"></canvas>
+</div>
+
+<script>
+let todo = JSON.parse(localStorage.getItem("todo")) || [];
+let done = JSON.parse(localStorage.getItem("done")) || [];
+let progressChartInstance;
+const MAX_TASKS = 12;
+
+// FireRed style sprites
+// FireRed style sprites - Large pool to avoid repetition
+const pokemonIcons = [
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png", color: "#4ade80"}, // Bulbasaur
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/2.png", color: "#22c55e"}, // Ivysaur
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/3.png", color: "#16a34a"}, // Venusaur
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png", color: "#f97316"}, // Charmander
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/5.png", color: "#fb923c"}, // Charmeleon
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/6.png", color: "#ea580c"}, // Charizard
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png", color: "#38bdf8"}, // Squirtle
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/8.png", color: "#0ea5e9"}, // Wartortle
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/9.png", color: "#0284c7"}, // Blastoise
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png", color: "#facc15"}, // Pikachu
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/94.png", color: "#a855f7"}, // Gengar
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/130.png", color: "#2563eb"}, // Gyarados
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/150.png", color: "#a78bfa"}, // Mewtwo
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/131.png", color: "#38bdf8"}, // Lapras
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/143.png", color: "#94a3b8"}, // Snorlax
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/149.png", color: "#22c55e"}, // Dragonite
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/248.png", color: "#4ade80"}, // Tyranitar
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/384.png", color: "#22c55e"}, // Rayquaza
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/448.png", color: "#3b82f6"}, // Lucario
+    {icon: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/376.png", color: "#94a3b8"}  // Metagross
+];
+
+function saveData() {
+    localStorage.setItem("todo", JSON.stringify(todo));
+    localStorage.setItem("done", JSON.stringify(done));
+}
+
+function getUniquePokemon() {
+    let usedIcons = todo.map(t => t.icon);
+    let available = pokemonIcons.filter(p => !usedIcons.includes(p.icon));
+    if (available.length === 0) return pokemonIcons[Math.floor(Math.random()*pokemonIcons.length)];
+    return available[Math.floor(Math.random()*available.length)];
+}
+
+function render() {
+    document.getElementById("todoList").innerHTML = "";
+    document.getElementById("doneList").innerHTML = "";
+
+    todo.forEach((task, index) => {
+        let div = document.createElement("div");
+        div.className = "task";
+        div.style.borderLeft = "6px solid " + task.color;
+        div.innerHTML = `<span><img src="${task.icon}"> ${task.text}</span>
+                         <button onclick="completeTask(${index})">Done</button>`;
+        document.getElementById("todoList").appendChild(div);
+    });
+
+    done.forEach((task, index) => {
+        let div = document.createElement("div");
+        div.className = "task";
+        div.style.borderLeft = "6px solid " + task.color;
+        div.innerHTML = `<span><img src="${task.icon}"> ${task.text}</span>
+                         <button class="delete-btn" onclick="deleteTask(${index})">Delete</button>`;
+        document.getElementById("doneList").appendChild(div);
+    });
+
+    updateChart();
+}
+
+function addTask() {
+    if (todo.length >= MAX_TASKS) {
+        alert("Too many tasks! Complete or delete some tasks first.");
+        return;
+    }
+
+    let text = document.getElementById("taskInput").value.trim();
+    if (text === "") return;
+
+    let poke = getUniquePokemon();
+    todo.push({ text, icon: poke.icon, color: poke.color });
+
+    document.getElementById("taskInput").value = "";
+    saveData();
+    render();
+}
+
+function completeTask(index) {
+    let task = todo.splice(index, 1)[0];
+    done.push(task);
+    saveData();
+    render();
+    playPokemonSound();
+}
+
+function deleteTask(index) {
+    done.splice(index, 1);
+    saveData();
+    render();
+}
+
+function playPokemonSound() {
+    let sound = new Audio("https://www.myinstants.com/media/sounds/pokemon-fire-red-level-up.mp3");
+    sound.play();
+}
+
+function updateChart() {
+    let ctx = document.getElementById("progressChart");
+    let percentDone = done.length;
+    let percentTodo = todo.length;
+
+    if (progressChartInstance) progressChartInstance.destroy();
+
+    progressChartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: ['Done', 'Remaining'],
+            datasets: [{
+                data: [percentDone, percentTodo],
+                backgroundColor: ['#22c55e', '#ef4444']
+            }]
+        },
+        options: {
+            plugins: {
+                legend: { labels: { color: 'white' } }
+            }
+        }
+    });
+}
+
+function toggleChart() {
+    let box = document.getElementById("chartBox");
+    let overlay = document.getElementById("chartOverlay");
+    box.classList.toggle("show");
+    overlay.classList.toggle("show");
+    updateChart();
+}
+
+// Enter key add task (fixed)
+document.getElementById("taskInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+        addTask();
+    }
+});
+
+render();
+</script>
+
+</body>
+</html>
